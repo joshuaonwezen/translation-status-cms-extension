@@ -1,0 +1,31 @@
+sections:
+  - key: graph
+    label: Optimizely Graph
+    elements:
+      - type: secret
+        key: singleKey
+        label: Single key
+        help: >-
+          The instance's Graph single key (CMS → Settings → API Keys). Used for the instance's
+          languages and for the published pages per language. Leave blank to keep the saved one.
+      - type: button
+        label: Save
+        action: saveGraph
+        style: primary
+  - key: cms
+    label: CMS API client
+    elements:
+      - type: text
+        key: clientId
+        label: Client ID
+        help: >-
+          CMS → Settings → API Keys. Read access is enough: it reads each language version of
+          the open item, drafts included, and the content type definitions.
+      - type: secret
+        key: clientSecret
+        label: Client secret
+        help: Shown once when the API key is created. Leave blank to keep the saved one.
+      - type: button
+        label: Save
+        action: saveCms
+        style: primary
