@@ -16,7 +16,7 @@ describe('stateOf', () => {
   });
 });
 
-const KEY = '3525e1552b6f46158be2850ff6e6fb74';
+const KEY = '0f8e2d6c4b1a49e7a3c5d7f9b2e4c6a8';
 const TYPES: Record<string, TypeInfo> = {
   Page: {properties: {title: {type: 'string', displayName: 'Title', isLocalized: true}}},
 };

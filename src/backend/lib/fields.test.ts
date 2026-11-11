@@ -19,7 +19,7 @@ const types = (k: string | undefined) => (k ? TYPES[k] : undefined);
 
 const version = (headline: string, body: string, cardTitle: string, nodeId = 'n1'): VersionContent => ({
   contentType: 'DynamicExperience',
-  properties: {metaTitle: {value: 'Mosey Bank'}},
+  properties: {metaTitle: {value: 'Example Bank'}},
   composition: {
     nodeType: 'experience',
     nodes: [
@@ -45,7 +45,7 @@ describe('localizedFields', () => {
   it('lists the localized text fields of the page and its inline blocks, not the others', () => {
     const fields = localizedFields(version('Banking built around you', '<p>Hello <b>there</b></p>', 'Savings'), types);
     expect(fields.map((f) => [f.where, f.label, f.text])).toEqual([
-      ['', 'Meta title', 'Mosey Bank'],
+      ['', 'Meta title', 'Example Bank'],
       ['Home Hero', 'Headline', 'Banking built around you'],
       ['Home Hero', 'Body', 'Hello there'],
       ['Home Hero > Card', 'Title', 'Savings'],
