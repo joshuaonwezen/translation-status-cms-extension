@@ -6,7 +6,7 @@ sections:
         key: singleKey
         label: Single key
         help: >-
-          Found in the CMS under Settings > API Keys. The Translations page needs it to count the
+          Found in the CMS under Settings > API Keys. The Translations view needs it to count the
           published pages in each language. The sidebar works without it, but then lists only the
           languages an item is already in. Leave blank to keep the saved key.
       - type: button

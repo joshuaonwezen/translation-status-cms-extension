@@ -10,3 +10,6 @@ See where every language stands, page by page and across the site.
 - **Translations** view (Extensions in the navigation rail):
   - per language, how many pages are published in it, and how many are out of date;
   - every page, missing and out-of-date languages first.
+
+Works with any Optimizely CMS (SaaS) instance and needs nothing from the site: a CMS API client for the sidebar
+and the Optimizely Graph single key for the view.
