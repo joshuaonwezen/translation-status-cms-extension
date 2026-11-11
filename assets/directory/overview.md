@@ -3,10 +3,10 @@
 See where every language stands, page by page and across the site.
 
 - **Translations** sidebar on an item:
-  - every language of the instance: published, published with unpublished changes, draft only, or missing;
-  - per language, the localized fields that are still empty or word for word the source, and whether it
-    was last changed before the source language;
+  - every language of the site: published, published with unpublished changes, draft only, or not translated;
+  - per language, the translatable fields that are still empty or word for word the source, and whether the
+    source changed since it was last updated;
   - the source language's own empty fields.
 - **Translations** view (Extensions in the navigation rail):
-  - per language, how many pages are published in it, and how many are older than the source;
-  - every page, missing and stale languages first.
+  - per language, how many pages are published in it, and how many are out of date;
+  - every page, missing and out-of-date languages first.

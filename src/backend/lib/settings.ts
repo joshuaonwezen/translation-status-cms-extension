@@ -1,6 +1,7 @@
 import {logger, storage, ValueHash} from '@zaiusinc/app-sdk';
 
 import type {CmsConfig} from './cms';
+import {NotConfiguredError} from './errors';
 import type {GraphConfig} from './graph';
 
 // Section keys match forms/settings.yml.
@@ -14,12 +15,14 @@ export type CmsSettings = {
   clientSecret?: string;
 };
 
-export interface LoadedSettings {
-  graph: GraphConfig;
-  cms: CmsConfig;
+/**
+ * Each part is null until it is saved. The sidebar needs the CMS client and uses Graph
+ * when it can; the view needs Graph only.
+ */
+export interface LoadedConfig {
+  cms: CmsConfig | null;
+  graph: GraphConfig | null;
 }
-
-export type LoadedConfig = {ok: true; config: LoadedSettings} | {ok: false; missing: string[]};
 
 /**
  * One settings section, or {} when the store can't be read. On a CMS-scoped install that has
@@ -40,9 +43,18 @@ export async function loadConfig(): Promise<LoadedConfig> {
   const singleKey = graph.singleKey?.trim() ?? '';
   const clientId = cms.clientId?.trim() ?? '';
   const clientSecret = cms.clientSecret?.trim() ?? '';
+  return {
+    cms: clientId && clientSecret ? {clientId, clientSecret} : null,
+    graph: singleKey ? {singleKey} : null,
+  };
+}
 
-  const missing = [!singleKey && 'Graph single key', !clientId && 'CMS client ID', !clientSecret && 'CMS client secret'].filter(
-    (m): m is string => Boolean(m),
-  );
-  return missing.length > 0 ? {ok: false, missing} : {ok: true, config: {graph: {singleKey}, cms: {clientId, clientSecret}}};
+export function requireCms(config: LoadedConfig): CmsConfig {
+  if (!config.cms) throw new NotConfiguredError('The app settings are missing the CMS API client ID and secret.');
+  return config.cms;
+}
+
+export function requireGraph(config: LoadedConfig): GraphConfig {
+  if (!config.graph) throw new NotConfiguredError('The app settings are missing the Optimizely Graph key.');
+  return config.graph;
 }

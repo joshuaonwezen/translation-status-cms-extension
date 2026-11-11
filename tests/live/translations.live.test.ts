@@ -2,7 +2,10 @@ import {writeFileSync} from 'node:fs';
 
 import {describe, expect, it} from 'vitest';
 
-import {createTranslations} from '../../src/backend/lib/translations';
+import {CmsClient} from '../../src/backend/lib/cms';
+import {instanceLocales} from '../../src/backend/lib/graph';
+import {coverage, translationStatus} from '../../src/backend/lib/translations';
+import {contentKey} from '../../src/backend/lib/validate';
 
 // Read-only: reads one item's language versions and the published pages per language.
 // TRANSLATIONS_LIVE=1 OPTIMIZELY_CMS_CLIENT_ID=… OPTIMIZELY_CMS_CLIENT_SECRET=… OPTIMIZELY_GRAPH_SINGLE_KEY=… \
@@ -10,16 +13,18 @@ import {createTranslations} from '../../src/backend/lib/translations';
 const live = process.env.TRANSLATIONS_LIVE === '1';
 
 describe.skipIf(!live)('translation status against a real CMS', () => {
-  const translations = createTranslations({
-    graph: {singleKey: process.env.OPTIMIZELY_GRAPH_SINGLE_KEY ?? ''},
-    cms: {clientId: process.env.OPTIMIZELY_CMS_CLIENT_ID ?? '', clientSecret: process.env.OPTIMIZELY_CMS_CLIENT_SECRET ?? ''},
+  const graph = {singleKey: process.env.OPTIMIZELY_GRAPH_SINGLE_KEY ?? ''};
+  const cms = new CmsClient({
+    clientId: process.env.OPTIMIZELY_CMS_CLIENT_ID ?? '',
+    clientSecret: process.env.OPTIMIZELY_CMS_CLIENT_SECRET ?? '',
   });
 
   it('compares an item and counts coverage', async () => {
-    const status = await translations.translationStatus({key: process.env.TRANSLATIONS_LIVE_KEY ?? '', locale: 'en'});
-    const coverage = await translations.coverage();
-    if (process.env.TRANSLATIONS_LIVE_OUT) writeFileSync(process.env.TRANSLATIONS_LIVE_OUT, JSON.stringify({status, coverage}, null, 2));
+    const key = contentKey(process.env.TRANSLATIONS_LIVE_KEY);
+    const status = await translationStatus({cms, siteLocales: () => instanceLocales(graph)}, key);
+    const pages = await coverage(graph);
+    if (process.env.TRANSLATIONS_LIVE_OUT) writeFileSync(process.env.TRANSLATIONS_LIVE_OUT, JSON.stringify({status, coverage: pages}, null, 2));
     expect(status.kind).toBe('status');
-    expect(coverage.pages).toBeGreaterThan(0);
+    expect(pages.pages).toBeGreaterThan(0);
   });
 });

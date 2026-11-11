@@ -1,14 +1,15 @@
 # Translation status
 
 ## Setup
-1. **Optimizely Graph**: the instance's single key.
-2. **CMS API client**: read access is enough.
+1. **CMS API client**: needed for the sidebar. Read access is enough.
+2. **Optimizely Graph**: the site's single key. Needed for the Translations page. The sidebar works without it,
+   but then lists only the languages an item is already in.
 
 ## Using it
 Open an item and the **Translations** tab on the right-hand rail. The source is the language the item was
-created in; each other language is compared with its published version, field by field. Only fields whose
-content type marks them as localized count, including those of inline Visual Builder blocks. Shared blocks are
-separate items with their own languages.
+created in; each other language is compared with its published version, field by field. Only text fields set as
+translatable on their content type count, including those of blocks added inline in Visual Builder. Shared blocks
+are separate items with their own languages. Use **Refresh** after publishing a translation.
 
 **Extensions > Translations** counts the published pages per language from Graph. A language that only has a
 draft counts as missing there; the sidebar shows drafts too.

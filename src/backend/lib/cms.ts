@@ -2,6 +2,7 @@ import type {CompositionNode, Properties, TypeInfo} from './fields';
 import {ApiError, requestJson} from './http';
 
 const CMS_API = 'https://api.cms.optimizely.com';
+export const VERSION_PAGE_SIZE = 100;
 const EXPIRY_BUFFER_MS = 30_000;
 
 export interface CmsConfig {
@@ -75,26 +76,19 @@ export class CmsClient {
     }
   }
 
-  /** The newest versions of the item in `locale`, newest first, with their content. */
-  public async listVersions(key: string, locale: string, pageSize = 10): Promise<CmsVersion[]> {
+  /**
+   * One page of the item's versions in `locale`, newest first, with their content; [] when
+   * the item has no version there (or no languages at all: media, folders).
+   */
+  public async versionPage(key: string, locale: string, pageIndex: number): Promise<CmsVersion[]> {
     try {
       const page = await this.get<{items?: CmsVersion[]}>(
         'List versions',
-        `/v1/content/${key}/locales/${encodeURIComponent(locale)}?pageSize=${pageSize}`,
+        `/v1/content/${key}/locales/${encodeURIComponent(locale)}?pageSize=${VERSION_PAGE_SIZE}&pageIndex=${pageIndex}`,
       );
       return page?.items ?? [];
     } catch (error) {
-      // An item with no version in this locale (or no locales at all: media, folders).
       if (error instanceof ApiError && error.status === 404) return [];
-      throw error;
-    }
-  }
-
-  public async getVersion(key: string, version: string): Promise<CmsVersion | null> {
-    try {
-      return await this.get<CmsVersion>('Get version', `/v1/content/${key}/versions/${encodeURIComponent(version)}`);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 404) return null;
       throw error;
     }
   }

@@ -1,8 +1,9 @@
+import {MAX_PUBLISHED_ENTRIES} from '../../shared/constants';
 import {ApiError, requestJson} from './http';
 
 const GRAPH = 'https://cg.optimizely.com/content/v2';
 const PAGE_LIMIT = 100;
-const MAX_PAGES = 30;
+const MAX_PAGES = MAX_PUBLISHED_ENTRIES / PAGE_LIMIT;
 
 export interface GraphConfig {
   singleKey: string;
@@ -62,8 +63,11 @@ export interface PublishedPage {
   url: string | null;
 }
 
-/** Every published page in every language: one entry per page and language. */
-export async function publishedPages(cfg: GraphConfig): Promise<PublishedPage[]> {
+/**
+ * Every published page in every language: one entry per page and language, up to
+ * MAX_PUBLISHED_ENTRIES. `truncated`: the cap was reached before Graph ran out.
+ */
+export async function publishedPages(cfg: GraphConfig): Promise<{pages: PublishedPage[]; truncated: boolean}> {
   const pages: PublishedPage[] = [];
   let cursor: string | null = '';
   for (let page = 0; page < MAX_PAGES && cursor !== null; page++) {
@@ -80,7 +84,7 @@ export async function publishedPages(cfg: GraphConfig): Promise<PublishedPage[]>
     }
     cursor = items.length === PAGE_LIMIT ? data._Content?.cursor ?? null : null;
   }
-  return pages;
+  return {pages, truncated: Boolean(cursor)};
 }
 
 /** Throws ApiError when the key is rejected. */
