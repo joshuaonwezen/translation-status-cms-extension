@@ -3,11 +3,12 @@ import {writeFileSync} from 'node:fs';
 import {describe, expect, it} from 'vitest';
 
 import {CmsClient} from '../../src/backend/lib/cms';
-import {instanceLocales} from '../../src/backend/lib/graph';
+import {siteLanguages} from '../../src/backend/lib/languages';
 import {coverage, translationStatus} from '../../src/backend/lib/translations';
 import {contentKey} from '../../src/backend/lib/validate';
 
-// Read-only: reads one item's language versions and the published pages per language.
+// Read-only: reads one item's language versions, the published pages per language and
+// every language's drafts.
 // TRANSLATIONS_LIVE=1 OPTIMIZELY_CMS_CLIENT_ID=… OPTIMIZELY_CMS_CLIENT_SECRET=… OPTIMIZELY_GRAPH_SINGLE_KEY=… \
 // TRANSLATIONS_LIVE_KEY=<content key> TRANSLATIONS_LIVE_OUT=/tmp/translations.json yarn vitest run tests/live
 const live = process.env.TRANSLATIONS_LIVE === '1';
@@ -21,10 +22,12 @@ describe.skipIf(!live)('translation status against a real CMS', () => {
 
   it('compares an item and counts coverage', async () => {
     const key = contentKey(process.env.TRANSLATIONS_LIVE_KEY);
-    const status = await translationStatus({cms, siteLocales: () => instanceLocales(graph)}, key);
-    const pages = await coverage(graph);
+    const languages = () => siteLanguages(cms, graph);
+    const status = await translationStatus({cms, siteLanguages: languages}, key);
+    const pages = await coverage({graph, cms, languages});
     if (process.env.TRANSLATIONS_LIVE_OUT) writeFileSync(process.env.TRANSLATIONS_LIVE_OUT, JSON.stringify({status, coverage: pages}, null, 2));
     expect(status.kind).toBe('status');
     expect(pages.pages).toBeGreaterThan(0);
+    expect(pages.drafts).toBe('cms');
   });
 });

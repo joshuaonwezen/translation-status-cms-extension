@@ -7,8 +7,8 @@ sections:
         label: Single key
         help: >-
           Found in the CMS under Settings > API Keys. The Translations view needs it to count the
-          published pages in each language. The sidebar works without it, but then lists only the
-          languages an item is already in. Leave blank to keep the saved key.
+          published pages in each language. The sidebar works without it. Leave blank to keep the
+          saved key.
       - type: button
         label: Save
         action: saveGraph
@@ -21,8 +21,9 @@ sections:
         label: Client ID
         help: >-
           Needed for the sidebar. Create an API client in the CMS under Settings > API Keys. Read
-          access is enough: the sidebar reads each language version of the open item, drafts
-          included, and the content types that say which fields are translatable.
+          access is enough: the sidebar reads the site's languages, each language version of the
+          open item, drafts included, and the content types that say which fields are translatable.
+          The Translations view uses it to show drafts.
       - type: secret
         key: clientSecret
         label: Client secret

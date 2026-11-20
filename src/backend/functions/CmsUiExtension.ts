@@ -4,8 +4,8 @@ import {logger} from '@zaiusinc/app-sdk';
 import type {ActionName, ActionParams, ActionResults, Envelope} from '../../shared/types';
 import {CmsClient} from '../lib/cms';
 import {ActionError, NotConfiguredError} from '../lib/errors';
-import {instanceLocales} from '../lib/graph';
 import {ApiError} from '../lib/http';
+import {siteLanguages} from '../lib/languages';
 import {type LoadedConfig, loadConfig, requireCms, requireGraph} from '../lib/settings';
 import {coverage, translationStatus} from '../lib/translations';
 import {isAction, PARSERS} from '../lib/validate';
@@ -26,15 +26,18 @@ function fail(error: string, message?: string): Envelope<never> {
 type Handlers = {[A in ActionName]: (config: LoadedConfig, params: ActionParams[A]) => Promise<ActionResults[A]>};
 
 const HANDLERS: Handlers = {
-  // The sidebar needs the CMS client; Graph only adds the languages the item isn't in yet.
+  // The sidebar needs the CMS client; the site's languages come from it too.
   translationStatus: (config, p) => {
-    const {graph} = config;
-    return translationStatus(
-      {cms: new CmsClient(requireCms(config)), siteLocales: graph ? () => instanceLocales(graph) : null},
-      p.key,
-    );
+    const cms = new CmsClient(requireCms(config));
+    return translationStatus({cms, siteLanguages: () => siteLanguages(cms, config.graph)}, p.key);
   },
-  coverage: (config) => coverage(requireGraph(config)),
+  // The view needs Graph for the published pages; the CMS client adds drafts and the
+  // languages' CMS names.
+  coverage: (config) => {
+    const graph = requireGraph(config);
+    const cms = config.cms ? new CmsClient(config.cms) : null;
+    return coverage({graph, cms, languages: () => siteLanguages(cms, graph)});
+  },
 };
 
 export class CmsUiExtension extends App.Function {

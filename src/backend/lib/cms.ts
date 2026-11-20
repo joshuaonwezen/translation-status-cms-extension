@@ -32,6 +32,13 @@ export interface CmsItem {
   locales?: string[];
 }
 
+export interface CmsLocale {
+  key: string;
+  displayName?: string;
+  isEnabled?: boolean;
+  sortOrder?: number;
+}
+
 // Module scope survives warm invocations of the function.
 let tokenCache: {clientId: string; token: string; expiresAt: number} | null = null;
 
@@ -64,6 +71,19 @@ export class CmsClient {
     return requestJson<T>('cms', label, `${CMS_API}${path}`, {
       headers: {Authorization: `Bearer ${await this.token()}`},
     });
+  }
+
+  /** The instance's languages, enabled or not. */
+  public async listLocales(): Promise<CmsLocale[]> {
+    const page = await this.get<{items?: CmsLocale[]}>('List locales', '/v1/locales?pageSize=1000');
+    return page?.items ?? [];
+  }
+
+  /** One page of every item's versions in `locale` with one of `statuses`, site-wide. */
+  public async queryVersions(locale: string, statuses: string[], pageIndex: number): Promise<CmsVersion[]> {
+    const query = new URLSearchParams({locales: locale, statuses: statuses.join(','), pageSize: String(VERSION_PAGE_SIZE), pageIndex: String(pageIndex)});
+    const page = await this.get<{items?: CmsVersion[]}>('Query versions', `/v1/content/versions?${query}`);
+    return page?.items ?? [];
   }
 
   /** Null when the content doesn't exist (deleted, or never did). */

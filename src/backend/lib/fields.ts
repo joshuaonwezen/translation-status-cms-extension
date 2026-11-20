@@ -69,27 +69,27 @@ export function textOf(value: unknown): string {
   return '';
 }
 
+interface Owner {
+  properties?: Properties | null;
+}
+
+type Emit = (field: LocalizedField) => void;
+
 function fieldsOf(
   contentType: string | undefined,
-  properties: Properties | null | undefined,
+  owner: Owner,
   idPrefix: string,
   positionPrefix: string,
   where: string,
   types: TypeLookup,
-  out: LocalizedField[],
+  emit: Emit,
 ) {
   const info = types(contentType);
   for (const [name, prop] of Object.entries(info?.properties ?? {})) {
     if (!prop) continue;
-    const value = properties?.[name]?.value;
+    const value = owner.properties?.[name]?.value;
     if (prop.isLocalized && TEXT_TYPES.has(prop.type ?? '')) {
-      out.push({
-        id: `${idPrefix}${name}`,
-        position: `${positionPrefix}${name}`,
-        label: prop.displayName || name,
-        where,
-        text: textOf(value),
-      });
+      emit({id: `${idPrefix}${name}`, position: `${positionPrefix}${name}`, label: prop.displayName || name, where, text: textOf(value)});
     }
     // Inline blocks in a content area, and type:"component" properties, carry their own fields.
     const inline = Array.isArray(value) ? value : value && typeof value === 'object' ? [value] : [];
@@ -97,25 +97,29 @@ function fieldsOf(
       if (!item || typeof item !== 'object' || !('properties' in item)) return;
       const block = item as {contentType?: string; properties?: Properties};
       const label = types(block.contentType)?.displayName || block.contentType || name;
-      fieldsOf(block.contentType ?? undefined, block.properties, `${idPrefix}${name}[${i}].`, `${positionPrefix}${name}[${i}].`, where ? `${where} > ${label}` : label, types, out);
+      fieldsOf(block.contentType ?? undefined, block, `${idPrefix}${name}[${i}].`, `${positionPrefix}${name}[${i}].`, where ? `${where} > ${label}` : label, types, emit);
     });
   }
 }
 
-/** Every localized text field of the version: the item's own, then each inline block's, in page order. */
-export function localizedFields(version: VersionContent, types: TypeLookup): LocalizedField[] {
-  const out: LocalizedField[] = [];
-  fieldsOf(version.contentType, version.properties, 'page:', 'page:', '', types, out);
+function walkVersion(version: VersionContent, types: TypeLookup, emit: Emit) {
+  fieldsOf(version.contentType, version, 'page:', 'page:', '', types, emit);
   const walk = (node: CompositionNode | null | undefined, position: string) => {
     if (!node) return;
     const c = node.component;
     if (c && !c.reference) {
       const where = node.displayName || types(c.contentType)?.displayName || c.contentType || 'Block';
-      fieldsOf(c.contentType, c.properties, `${node.id ?? position}:`, `${position}:`, where, types, out);
+      fieldsOf(c.contentType, c, `${node.id ?? position}:`, `${position}:`, where, types, emit);
     }
     (node.nodes ?? []).forEach((child, i) => walk(child, `${position}/${i}`));
   };
   walk(version.composition, 'c');
+}
+
+/** Every localized text field of the version: the item's own, then each inline block's, in page order. */
+export function localizedFields(version: VersionContent, types: TypeLookup): LocalizedField[] {
+  const out: LocalizedField[] = [];
+  walkVersion(version, types, (field) => out.push(field));
   return out;
 }
 
@@ -131,19 +135,42 @@ export interface Comparison {
 
 const normalize = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
 
-export function compareFields(source: LocalizedField[], target: LocalizedField[]): Comparison {
+/**
+ * Still word for word the source: maybe untranslated, maybe a name that stays the same.
+ * Very short texts and ones without letters (numbers, codes) don't count.
+ */
+export function sameText(source: string, target: string): boolean {
+  return normalize(target) === normalize(source) && source.length > 3 && /\p{L}/u.test(source);
+}
+
+/** Finds a source field's counterpart in another version: by node id, then by position. */
+export function matcher<T extends LocalizedField>(target: T[]): (field: LocalizedField) => T | undefined {
   const byId = new Map(target.map((f) => [f.id, f]));
   const byPosition = new Map(target.map((f) => [f.position, f]));
+  return (field) => byId.get(field.id) ?? byPosition.get(field.position);
+}
+
+export function compareFields(source: LocalizedField[], target: LocalizedField[]): Comparison {
+  const find = matcher(target);
   const result: Comparison = {empty: [], same: [], translated: 0, total: 0};
   for (const field of source) {
     if (!field.text) continue;
     result.total++;
-    const text = (byId.get(field.id) ?? byPosition.get(field.position))?.text ?? '';
+    const text = find(field)?.text ?? '';
     if (!text) result.empty.push(field);
-    else if (normalize(text) === normalize(field.text) && field.text.length > 3 && /\p{L}/u.test(field.text)) result.same.push(field);
+    else if (sameText(field.text, text)) result.same.push(field);
     else result.translated++;
   }
   return result;
+}
+
+/**
+ * Source fields whose text differs between two source versions: what changed since a
+ * translation was made from the older one.
+ */
+export function changedFields(current: LocalizedField[], earlier: LocalizedField[]): LocalizedField[] {
+  const find = matcher(earlier);
+  return current.filter((f) => f.text && normalize(find(f)?.text ?? '') !== normalize(f.text));
 }
 
 /** Every content type named anywhere in the version, so their definitions can be fetched first. */

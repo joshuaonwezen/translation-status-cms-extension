@@ -16,8 +16,8 @@ export type CmsSettings = {
 };
 
 /**
- * Each part is null until it is saved. The sidebar needs the CMS client and uses Graph
- * when it can; the view needs Graph only.
+ * Each part is null until it is saved. The sidebar needs the CMS client; the view needs
+ * Graph, and uses the CMS client for drafts and language names when it has one.
  */
 export interface LoadedConfig {
   cms: CmsConfig | null;

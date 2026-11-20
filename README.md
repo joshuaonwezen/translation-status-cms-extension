@@ -1,33 +1,29 @@
 # Translation status
 
-See where every language stands without leaving the CMS: field by field for the item open in the editor, and page by page across the site. Editors see which languages an item is in, which translatable fields are still empty or the same as the source, and which translations are older than the source.
+See where every language stands without leaving the CMS: field by field for the item open in the editor, and page by page across the site. Editors see which languages an item is in, which translatable fields are still empty, the same as the source or changed in the source since, and which pages are drafts or out of date. It only reads.
 
 Documentation: [walkthrough](https://opti.joshuaonwezen.dev/demo/cms-ui-extensions#translations).
 
 ## What editors get
 
 ### Translations sidebar (per item)
-- The item's name as the heading, and what it is compared with ("Compared with the published English version from 5 Nov").
-- Every language of the site, read from the `Locales` enum in Optimizely Graph and named for the editor ("Dutch (nl)"), with a state:
-  - published;
-  - published with unpublished changes;
-  - draft only;
-  - not translated.
-- Without a Graph key, or when Graph doesn't answer, only the languages the item is already in, with a notice saying why the untranslated ones are missing.
-- The **source** is the language the item was created in (its primary locale). Each other language's newest version is compared with the source's **published** version (its newest draft if it was never published), field by field:
+- The item's name as the heading, and its source: "Source: English, published 10 Sept".
+- One chip per language of the site, then a card per language the item is in. Languages come from the CMS (`GET /v1/locales`, enabled ones, in the CMS's order) and carry the CMS's own names ("Deutsch", "français").
+- Per language: its state (published, out of date, draft, not translated; a small pencil when a newer draft waits on a published version), a meter of translated fields, and the fields to check:
   - **empty:** the source has text, this language has none;
   - **same as the source:** word for word, so maybe untranslated, maybe a name that stays the same;
-  - **source changed since:** last changed before the source's published version.
-- The source's own empty translatable fields, which leave nothing to translate.
-- **Refresh** after publishing a translation, **Retry** after an error, and a "How this is checked" section with the details below.
+  - **changed in the source:** translated, but the source text changed after this language was last edited. Found by comparing the current source with the source version that was published when the translation was last changed.
+- The languages the item isn't in yet share one card, which points to the CMS's own translate: **More > Translate**, with "Translate content using AI" ticked. That lives in the editor and has no API, so the panel can't start it.
+- The source's own empty translatable fields, which leave nothing to translate; **Refresh**, **Retry** after an error, and a "How this works" section.
 
-A field counts when its content type marks it as localized (`isLocalized`) and it is a string or rich text. That includes the fields of blocks added inline in a Visual Builder composition or a content area. Fields are matched by composition node ID, falling back to position. Shared blocks are separate items with their own languages.
+The **source** is the language the item was created in (its primary locale). Each other language's newest version is compared with the source's **published** version (its newest draft if it was never published). A field counts when its content type marks it as localized (`isLocalized`) and it is a string or rich text. That includes the fields of blocks added inline in a Visual Builder composition or a content area. Fields are matched by composition node ID, falling back to position. Shared blocks are separate items with their own languages.
 
 ### Translations view (whole site)
-- Per language, how many pages are published in it, and how many of those are out of date against the source. The source here is the language most pages are published in.
-- Every page with each language's state (published, out of date, missing), pages with gaps first. With "only gaps" on and none left: "Every page is in every language".
+- Totals across every page and language: up to date, drafts, out of date, not started.
+- A card per language with a stacked bar (up to date | draft | out of date, on a track of not started) and its counts. Clicking a card shows that language only.
+- Every page with each language's state, searchable by name or URL, the most actionable first (out of date, then drafts, then not started), 50 at a time.
 
-The view reads Graph with the single key, so it sees published versions only: a language that only has a draft counts as missing there. The sidebar reads the CMS REST API and shows drafts too.
+Published pages come from Graph (single key, so published versions only). Drafts come from the CMS (`GET /v1/content/versions?locales=…&statuses=draft,ready,inReview,scheduled`), so a language with only a draft shows as a draft, not as missing. Without the CMS client the view says so and counts drafts as not started.
 
 ## Setup
 
@@ -37,8 +33,8 @@ The view reads Graph with the single key, so it sees published versions only: a 
 
 | Setting | Required | Where to find it | Used for |
 |---|---|---|---|
-| CMS client ID and secret | For the sidebar | CMS: Settings > API Keys. Read access is enough. | Reading each language version of the open item, drafts included, and the content types that say which fields are translatable. |
-| Optimizely Graph single key | For the view | CMS: Settings > API Keys | Counting the published pages per language. The sidebar uses it to list the languages an item isn't translated into yet, and works without it. |
+| CMS client ID and secret | For the sidebar | CMS: Settings > API Keys. Read access is enough. | Each language version of the open item (drafts included), the content types that say which fields are translatable, the site's languages, and drafts across the site for the view. |
+| Optimizely Graph single key | For the view | CMS: Settings > API Keys | Counting the published pages per language. The site's languages come from it when there is no CMS client. |
 
 Each action checks only the settings it uses and, when one is missing, answers with a plain sentence saying which.
 
@@ -46,7 +42,7 @@ Using the extension on another CMS instance: [reuse](https://opti.joshuaonwezen.
 
 ## What your site needs
 
-Nothing. The extension reads only the CMS and Optimizely Graph, so it works the same whatever renders the site.
+Nothing. The extension only reads the CMS and Optimizely Graph, so it works the same whatever renders the site.
 
 ## Limits
 
@@ -57,8 +53,9 @@ These come from the CMS UI extensions platform (beta, SDK 1.1.0) and the CMS API
 - **Extensions get no CMS token.** The app stores its own CMS API client in its settings.
 - **Version history is read up to 1,000 versions per language** (10 pages of 100). A language published more than 1,000 versions ago shows as draft only.
 - **The view reads up to 3,000 published page languages.** Past that it says its numbers are incomplete.
-- **Locale spelling:** Graph's enum spells region locales `ja_JP`, while the CMS REST API and `_metadata.locale` use `ja-JP`. The extension uses the hyphen throughout.
+- **Locale spelling:** Graph's enum spells region locales `ja_JP`, while the CMS REST API and `_metadata.locale` use `ja-JP`. The extension uses the hyphen throughout, and reads the languages from the CMS whenever it has the client.
 - **Reading settings an install never saved throws** in the production runtime; the app treats that as empty.
+- **Unpublished versions per language are read up to 2,000** (20 pages of 100) for the view.
 
 ## Security
 
@@ -102,7 +99,8 @@ Publishing a new dev version moves existing installs onto it.
 | `src/backend/functions/CmsUiExtension.ts` | Action router: `translationStatus` (`{key}`), `coverage` (`{}`); validates params, checks the settings each action needs |
 | `src/backend/lib/validate.ts` | One parser per action |
 | `src/backend/lib/errors.ts` | `ActionError` (400) and `NotConfiguredError` (412) |
-| `src/backend/lib/fields.ts` | Localized fields of a version, and the comparison: pure |
-| `src/backend/lib/translations.ts` | The two actions, version paging, and the coverage summary |
-| `src/backend/lib/graph.ts`, `cms.ts` | Graph (languages, published pages) and CMS REST |
-| `src/cms-ui-extensions/translations/` | `TranslationStatus.sidebar.tsx`, `TranslationCoverage.view.tsx`, the coverage bars, language names and dates (`format.ts`) |
+| `src/backend/lib/fields.ts` | Localized fields of a version, and the comparisons: pure |
+| `src/backend/lib/translations.ts` | Status per item, version paging, drafts across the site, and the coverage summary |
+| `src/backend/lib/languages.ts` | The site's languages and their names |
+| `src/backend/lib/graph.ts`, `cms.ts` | Graph (published pages) and CMS REST |
+| `src/cms-ui-extensions/translations/` | `TranslationStatus.sidebar.tsx`, `TranslationCoverage.view.tsx`, the shared chips, bars and tokens (`ui.tsx`), dates and counts (`format.ts`) |

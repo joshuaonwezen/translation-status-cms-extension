@@ -3,7 +3,7 @@ import {afterEach, describe, expect, it, vi} from 'vitest';
 
 import {type CmsItem, type CmsVersion, VERSION_PAGE_SIZE} from './cms';
 import type {TypeInfo} from './fields';
-import {baseVersions, type CmsReader, stateOf, summarize, translationStatus} from './translations';
+import {baseVersions, type CmsReader, stateOf, summarize, translationStatus, type Unpublished} from './translations';
 
 const v = (version: string, status: string): CmsVersion => ({key: 'k', version, locale: 'nl', status});
 
@@ -71,44 +71,51 @@ describe('translationStatus', () => {
 
   it('pages past the first 100 versions to find the published one, and stops there', async () => {
     const {cms, pagesRead} = fakeCms(item, {en, nl});
-    const outcome = await translationStatus({cms, siteLocales: async () => ['en', 'nl', 'de']}, KEY);
+    const site = [
+      {code: 'en', name: 'English'},
+      {code: 'nl', name: 'Nederlands'},
+      {code: 'de', name: 'Deutsch'},
+    ];
+    const outcome = await translationStatus({cms, siteLanguages: async () => site}, KEY);
     if (outcome.kind !== 'status') throw new Error('expected a status');
     const {status} = outcome;
 
     // The published en version is on the second page; the third is never read.
     expect(pagesRead.filter((p) => p.startsWith('en:'))).toEqual(['en:0', 'en:1']);
-    expect(status.source).toEqual({locale: 'en', compared: 'published', lastModified: en.find((x) => x.version === '160')!.lastModified, empty: []});
+    expect(status.source).toEqual({locale: 'en', name: 'English', compared: 'published', lastModified: en.find((x) => x.version === '160')!.lastModified, empty: []});
     expect(status.languages).toBe('site');
 
     const [nlRow, deRow] = status.locales;
     // Published long ago with newer drafts: not "draft only".
-    expect(nlRow).toMatchObject({locale: 'nl', state: 'changes', translated: 0, total: 1});
+    expect(nlRow).toMatchObject({locale: 'nl', name: 'Nederlands', state: 'changes', translated: 0, total: 1});
     // Compared with the published "Hello world", not the newest en draft.
     expect(nlRow.same).toEqual([{label: 'Title', where: ''}]);
     expect(deRow).toMatchObject({locale: 'de', state: 'missing', total: 1});
   });
 
-  it('lists only the item\'s own languages without a Graph key, and says so', async () => {
-    const {cms} = fakeCms(item, {en, nl});
-    const outcome = await translationStatus({cms, siteLocales: null}, KEY);
-    if (outcome.kind !== 'status') throw new Error('expected a status');
-    expect(outcome.status.languages).toBe('no_graph_key');
-    expect(outcome.status.locales.map((r) => r.locale)).toEqual(['nl']);
-  });
-
-  it('reports a failed Graph lookup instead of hiding the untranslated languages', async () => {
+  it('reports a failed language lookup instead of hiding the untranslated languages', async () => {
     vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
     const {cms} = fakeCms(item, {en, nl});
-    const outcome = await translationStatus({cms, siteLocales: () => Promise.reject(new Error('Graph down'))}, KEY);
+    const outcome = await translationStatus({cms, siteLanguages: () => Promise.reject(new Error('CMS down'))}, KEY);
     if (outcome.kind !== 'status') throw new Error('expected a status');
-    expect(outcome.status.languages).toBe('graph_failed');
-    expect(outcome.status.locales.map((r) => r.locale)).toEqual(['nl']);
+    expect(outcome.status.languages).toBe('item');
+    expect(outcome.status.locales.map((r) => [r.locale, r.name])).toEqual([['nl', 'Dutch']]);
+  });
+
+  it('lists the source fields that changed since a translation was made', async () => {
+    // en published "Hello world" (v10), the nl translation (v11), then en republished as "Hello there" (v12).
+    const en2 = [version('en', 12, 'published', 'Hello there'), version('en', 10, 'previous', 'Hello world')];
+    const nl2 = [version('nl', 11, 'published', 'Hallo wereld')];
+    const {cms} = fakeCms(item, {en: en2, nl: nl2});
+    const outcome = await translationStatus({cms, siteLanguages: null}, KEY);
+    if (outcome.kind !== 'status') throw new Error('expected a status');
+    expect(outcome.status.locales[0]).toMatchObject({olderThanSource: true, changed: [{label: 'Title', where: ''}], translated: 0, total: 1});
   });
 
   it('answers not_found for a deleted item', async () => {
     const {cms} = fakeCms(item, {});
     cms.getItem = async () => null;
-    await expect(translationStatus({cms, siteLocales: null}, KEY)).rejects.toMatchObject({code: 'not_found'});
+    await expect(translationStatus({cms, siteLanguages: null}, KEY)).rejects.toMatchObject({code: 'not_found'});
   });
 });
 
@@ -125,6 +132,15 @@ describe('baseVersions', () => {
 
 describe('summarize', () => {
   const page = (key: string, locale: string, lastModified: string) => ({key, locale, displayName: key, lastModified, url: `/${locale}/${key}/`});
+  const languages = [
+    {code: 'en', name: 'English'},
+    {code: 'nl', name: 'Nederlands'},
+    {code: 'de', name: 'Deutsch'},
+  ];
+  const drafts = new Map<string, Map<string, Unpublished>>([
+    ['nl', new Map([['a', {status: 'draft', lastModified: '2026-10-09T00:00:00Z'}]])],
+    ['de', new Map([['c', {status: 'inReview', lastModified: '2026-10-03T00:00:00Z'}]])],
+  ]);
   const coverage = summarize(
     [
       page('a', 'en', '2026-10-01T00:00:00Z'),
@@ -133,19 +149,35 @@ describe('summarize', () => {
       page('b', 'nl', '2026-10-01T00:00:00Z'),
       page('c', 'en', '2026-10-01T00:00:00Z'),
     ],
-    ['en', 'nl', 'de'],
+    languages,
+    drafts,
   );
 
   it('takes the most published language as the source and counts the others against it', () => {
     expect(coverage.source).toBe('en');
-    expect(coverage.locales).toEqual(['en', 'nl', 'de']);
+    expect(coverage.languages).toEqual(languages);
     expect(coverage.pages).toBe(3);
-    expect(coverage.totals).toEqual({en: {published: 3, stale: 0}, nl: {published: 2, stale: 1}, de: {published: 0, stale: 0}});
+    expect(coverage.totals).toEqual({
+      en: {published: 3, stale: 0, draft: 0, missing: 0},
+      nl: {published: 1, stale: 1, draft: 0, missing: 1},
+      de: {published: 0, stale: 0, draft: 1, missing: 2},
+    });
     expect(coverage.truncated).toBe(false);
   });
 
-  it('lists pages with the most gaps first', () => {
-    expect(coverage.rows.map((r) => r.key)).toEqual(['c', 'b', 'a']);
-    expect(coverage.rows[1].locales.nl.state).toBe('stale');
+  it('shows drafts as drafts, and a newer draft on a published page as pending', () => {
+    const byKey = Object.fromEntries(coverage.rows.map((r) => [r.key, r]));
+    expect(byKey.c.locales.de).toEqual({state: 'draft', lastModified: '2026-10-03T00:00:00Z', pending: false});
+    expect(byKey.a.locales.nl).toMatchObject({state: 'published', pending: true});
+    expect(byKey.b.locales.nl).toMatchObject({state: 'stale', pending: false});
+  });
+
+  it('counts a draft-only language as missing without the CMS', () => {
+    const graphOnly = summarize([page('c', 'en', '2026-10-01T00:00:00Z')], languages, null);
+    expect(graphOnly.rows[0].locales.de.state).toBe('missing');
+  });
+
+  it('lists the most actionable pages first: out of date, then drafts, then not started', () => {
+    expect(coverage.rows.map((r) => r.key)).toEqual(['b', 'c', 'a']);
   });
 });

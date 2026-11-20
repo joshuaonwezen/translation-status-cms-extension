@@ -1,123 +1,159 @@
-import {Alert, Badge, Button, Disclosure, DisclosureContent, DisclosureTrigger, Group, Separator, Text} from '@optiaxiom/react';
+import {Alert, Button, Disclosure, DisclosureContent, DisclosureTrigger, Group, Text} from '@optiaxiom/react';
 import {register, type ExtensionContext} from '@optimizely/cms-extensibility-sdk';
-import type {FieldRef, LanguageSource, LocaleRow, LocaleState, StatusOutcome, TranslationStatus as Status} from '@shared/types';
+import type {CoverageState, FieldRef, LocaleRow, StatusOutcome, TranslationStatus as Status} from '@shared/types';
 import {useCallback, useEffect, useRef, useState} from 'react';
 
 import {call} from '../common/api';
 import {Frame} from '../common/Frame';
 import {useContent} from '../common/useContent';
-import {languageLabel, languageName, shortDate} from './format';
+import {count, shortDate} from './format';
+import {LanguageName, Meter, StateChip, StateIcon, STYLE} from './ui';
 
-const STATE: Record<LocaleState, {label: string; intent: 'success' | 'warning' | 'neutral'}> = {
-  published: {label: 'Published', intent: 'success'},
-  changes: {label: 'Unpublished changes', intent: 'warning'},
-  draft: {label: 'Draft only', intent: 'neutral'},
-  missing: {label: 'Not translated', intent: 'neutral'},
-};
+const fieldName = (f: FieldRef) => (f.where ? `${f.where} › ${f.label}` : f.label);
 
-const LANGUAGE_NOTICE: Record<Exclude<LanguageSource, 'site'>, string> = {
-  no_graph_key:
-    "Only the languages this item is already in are listed. Languages it isn't translated into yet show up once a CMS admin adds the Optimizely Graph key on this app's settings page.",
-  graph_failed:
-    "The site's languages couldn't be read from Optimizely Graph, so only the languages this item is already in are listed. Refresh to try again.",
-};
-
-const fieldName = (f: FieldRef) => (f.where ? `${f.where} > ${f.label}` : f.label);
-const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-
-function subtitle(status: Status): string | undefined {
-  const name = languageName(status.source.locale);
-  const when = status.source.lastModified ? ` from ${shortDate(status.source.lastModified)}` : '';
-  if (status.source.compared === 'published') return `Compared with the published ${name} version${when}`;
-  if (status.source.compared === 'draft') return `Compared with the ${name} draft${when}, which isn't published yet`;
-  return undefined;
+/** One chip per language: the view's states, so both panels speak the same words. */
+function chipState(row: LocaleRow): CoverageState {
+  if (row.state === 'missing') return 'missing';
+  if (row.state === 'draft') return 'draft';
+  return row.olderThanSource ? 'stale' : 'published';
 }
 
-function FieldList({title, fields}: {title: string; fields: FieldRef[]}) {
+function subtitle(status: Status): string | undefined {
+  const when = status.source.lastModified ? ` ${shortDate(status.source.lastModified)}` : '';
+  if (status.source.compared === 'published') return `Source: ${status.source.name}, published${when}`;
+  if (status.source.compared === 'draft') return `Source: ${status.source.name}, a draft from${when} that isn't published yet`;
+  return `Source: ${status.source.name}`;
+}
+
+function FieldGroup({title, fields}: {title: string; fields: FieldRef[]}) {
   if (fields.length === 0) return null;
   return (
-    <Group flexDirection="column" gap="2">
-      <Text color="fg.secondary" fontSize="xs" fontWeight="600">
-        {title}
-      </Text>
-      {fields.map((f, i) => (
-        <Text fontSize="xs" key={`${fieldName(f)}-${i}`}>
-          {fieldName(f)}
-        </Text>
-      ))}
+    <Group flexDirection="column" gap="4">
+      <span className="tx-tag">
+        {title} · {fields.length}
+      </span>
+      <ul className="tx-fieldlist">
+        {fields.map((f, i) => (
+          <li key={`${fieldName(f)}-${i}`}>
+            {f.where && <span className="tx-where">{f.where} ›</span>}
+            <span>{f.label}</span>
+          </li>
+        ))}
+      </ul>
     </Group>
   );
 }
 
 function Locale({row, source, editing}: {row: LocaleRow; source: string; editing: boolean}) {
-  const state = STATE[row.state];
-  const sourceName = languageName(source);
-  const details = row.empty.length + row.same.length;
+  const todo = row.empty.length + row.same.length + row.changed.length;
+  const missing = row.state === 'missing';
   return (
-    <Group flexDirection="column" gap="4">
-      <Group alignItems="center" flexWrap="wrap" gap="8">
-        <Text fontSize="sm" fontWeight="600">
-          {languageLabel(row.locale)}
-        </Text>
-        <Badge intent={state.intent} variant="subtle">
-          {state.label}
-        </Badge>
-        {row.olderThanSource && (
-          <Badge intent="warning" variant="subtle">
-            {sourceName} changed since
-          </Badge>
-        )}
-        {editing && (
-          <Text color="fg.tertiary" fontSize="xs">
-            you are editing this one
-          </Text>
-        )}
+    <div className="tx-card" style={editing ? {borderColor: 'var(--tx-draft)'} : undefined}>
+      <Group alignItems="center" gap="8" justifyContent="space-between">
+        <LanguageName code={row.locale} name={row.name} />
+        <Group alignItems="center" gap="4">
+          <StateChip state={chipState(row)} title={row.lastModified ? `Last changed ${shortDate(row.lastModified)}` : undefined} />
+          {row.state === 'changes' && (
+            <span className="tx-chip" data-state="draft" title="A newer draft is waiting">
+              <StateIcon size={12} state="draft" />
+            </span>
+          )}
+        </Group>
       </Group>
-      {row.state === 'missing' ? (
+      {editing && (
         <Text color="fg.secondary" fontSize="xs">
-          No {languageName(row.locale)} version yet: {count(row.total, 'field')} to translate.
-        </Text>
-      ) : (
-        <Text color="fg.secondary" fontSize="xs">
-          {row.translated} of {count(row.total, 'translatable field')} translated
-          {row.empty.length ? ` · ${row.empty.length} empty` : ''}
-          {row.same.length ? ` · ${row.same.length} same as ${sourceName}` : ''}
-          {row.lastModified ? ` · last changed ${shortDate(row.lastModified)}` : ''}
+          Open in the editor now
         </Text>
       )}
-      {details > 0 && (
+
+      {missing ? (
+        <Text color="fg.secondary" fontSize="xs">
+          Not translated yet: {count(row.total, 'field')} to translate.
+        </Text>
+      ) : (
+        <Group flexDirection="column" gap="4">
+          <Meter label={`${row.translated} of ${row.total} fields translated`} max={row.total} value={row.translated} />
+          <Text color="fg.secondary" fontSize="xs">
+            {row.translated} of {count(row.total, 'field')} translated
+            {row.lastModified ? ` · changed ${shortDate(row.lastModified)}` : ''}
+          </Text>
+        </Group>
+      )}
+
+      {row.olderThanSource && !missing && (
+        <Text fontSize="xs" style={{color: 'var(--tx-stale-text)'}}>
+          {source} changed after this was last edited
+          {row.changed.length ? `: ${count(row.changed.length, 'field')} to update` : '.'}
+        </Text>
+      )}
+
+      {todo > 0 && !missing && (
         <Disclosure>
-          <DisclosureTrigger>Show {count(details, 'field')}</DisclosureTrigger>
+          <DisclosureTrigger>{count(todo, 'field')} to check</DisclosureTrigger>
           <DisclosureContent>
-            <Group flexDirection="column" gap="8">
-              <FieldList fields={row.empty} title="Empty" />
-              <FieldList fields={row.same} title={`Same as ${sourceName}`} />
+            <Group flexDirection="column" gap="8" pt="4">
+              <FieldGroup fields={row.empty} title="Empty" />
+              <FieldGroup fields={row.same} title={`Same as ${source}`} />
+              <FieldGroup fields={row.changed} title={`Changed in ${source}`} />
             </Group>
           </DisclosureContent>
         </Disclosure>
       )}
-    </Group>
+    </div>
+  );
+}
+
+/**
+ * The languages the item isn't in yet, in one card. The CMS's own translate (More >
+ * Translate) is how to add one; it lives in the editor and has no API, so the panel points
+ * to it rather than starting it.
+ */
+function NotTranslated({rows, total, locale}: {rows: LocaleRow[]; total: number; locale: string}) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="tx-card">
+      <Group alignItems="center" gap="8" justifyContent="space-between">
+        <Text fontSize="sm" fontWeight="600">
+          Not translated yet
+        </Text>
+        <Text color="fg.secondary" fontSize="xs">
+          {count(total, 'field')} each
+        </Text>
+      </Group>
+      <div>
+        {rows.map((row) => (
+          <div className="tx-row" key={row.locale}>
+            <LanguageName code={row.locale} name={row.name} />
+            {row.locale === locale && (
+              <span className="tx-faint" style={{fontSize: 12}}>
+                open now
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+      <Text color="fg.secondary" fontSize="xs">
+        To add one, use the CMS&apos;s translate: More &gt; Translate, pick the language, and tick &quot;Translate content using AI&quot; to
+        have it translated for you.
+      </Text>
+    </div>
   );
 }
 
 function HowItIsChecked({source}: {source: string}) {
-  const name = languageName(source);
   return (
     <Disclosure>
-      <DisclosureTrigger>How this is checked</DisclosureTrigger>
+      <DisclosureTrigger>How this works</DisclosureTrigger>
       <DisclosureContent>
-        <Group flexDirection="column" gap="8">
+        <Group flexDirection="column" gap="8" pt="4">
           <Text color="fg.secondary" fontSize="xs">
-            Each language&apos;s newest version is compared with the {name} version (the published one, when there is
-            one), field by field. Only text
-            fields set as translatable on their content type count, including those of blocks added inline in Visual
-            Builder. Shared blocks are separate items with their own translations, and variations aren&apos;t compared.
+            Each language&apos;s newest version is compared with the {source} version (the published one, when there is one), field by
+            field. Only text fields set as translatable on their content type count, including those of blocks added inline in Visual Builder.
+            Shared blocks are separate items with their own translations, and variations aren&apos;t compared.
           </Text>
           <Text color="fg.secondary" fontSize="xs">
-            Same as {name}: word for word the {name} text. It may still need translating, or be a name that stays the same.
-          </Text>
-          <Text color="fg.secondary" fontSize="xs">
-            {name} changed since: the {name} version was published after this language was last changed.
+            Same as {source}: word for word the {source} text. It may still need translating, or be a name that stays the same. Changed in{' '}
+            {source}: the {source} text changed after this language was last edited.
           </Text>
         </Group>
       </DisclosureContent>
@@ -125,32 +161,49 @@ function HowItIsChecked({source}: {source: string}) {
   );
 }
 
+function Summary({status}: {status: Status}) {
+  return (
+    <div style={{display: 'flex', flexWrap: 'wrap', gap: 6}}>
+      {status.locales.map((row) => (
+        <span className="tx-chip" data-state={chipState(row)} key={row.locale} style={{paddingRight: 8}} title={row.name}>
+          <StateIcon size={12} state={chipState(row)} />
+          {row.locale}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function StatusBody({status, locale, busy, onRefresh}: {status: Status; locale: string; busy: boolean; onRefresh: () => void}) {
-  const source = status.source.locale;
+  const source = status.source.name;
   const empty = status.source.empty;
   return (
-    <Group flexDirection="column" gap="12">
-      <Group justifyContent="end">
-        <Button appearance="subtle" disabled={busy} onClick={onRefresh} size="sm">
-          Refresh
-        </Button>
-      </Group>
-      {status.languages !== 'site' && (
-        <Alert intent={status.languages === 'graph_failed' ? 'warning' : 'information'}>
-          <Text fontSize="sm">{LANGUAGE_NOTICE[status.languages]}</Text>
+    <Group className="tx" flexDirection="column" gap="12">
+      {status.locales.length > 0 && (
+        <Group alignItems="center" gap="8" justifyContent="space-between">
+          <Summary status={status} />
+          <Button appearance="subtle" disabled={busy} onClick={onRefresh} size="sm">
+            Refresh
+          </Button>
+        </Group>
+      )}
+      {status.languages === 'item' && (
+        <Alert intent="warning">
+          <Text fontSize="sm">
+            The site&apos;s languages couldn&apos;t be read, so only the languages this item is already in are listed. Refresh to try again.
+          </Text>
         </Alert>
       )}
       {status.source.compared === null && (
         <Alert intent="warning">
-          <Text fontSize="sm">There is no {languageName(source)} version to compare with.</Text>
+          <Text fontSize="sm">There is no {source} version to compare with.</Text>
         </Alert>
       )}
       {empty.length > 0 && (
         <Alert intent="warning">
           <Group flexDirection="column" gap="4">
             <Text fontSize="sm">
-              The {languageName(source)} version itself has {count(empty.length, 'empty translatable field')}, so there is
-              nothing to translate there:
+              The {source} version itself has {count(empty.length, 'empty translatable field')}, so there is nothing to translate there:
             </Text>
             <Text fontSize="xs">{empty.map(fieldName).join(', ')}</Text>
           </Group>
@@ -159,17 +212,16 @@ function StatusBody({status, locale, busy, onRefresh}: {status: Status; locale: 
       {status.locales.length === 0 && (
         <Text color="fg.secondary" fontSize="sm">
           {status.languages === 'site'
-            ? `This site has only one language, ${languageLabel(source)}, so there is nothing to translate.`
-            : `This item is only in ${languageLabel(source)} so far.`}
+            ? `This site has only one language, ${source}, so there is nothing to translate.`
+            : `This item is only in ${source} so far.`}
         </Text>
       )}
-      {status.locales.map((row) => (
-        <Group flexDirection="column" gap="8" key={row.locale}>
-          <Separator />
-          <Locale editing={row.locale === locale} row={row} source={source} />
-        </Group>
-      ))}
-      <Separator />
+      {status.locales
+        .filter((row) => row.state !== 'missing')
+        .map((row) => (
+          <Locale editing={row.locale === locale} key={row.locale} row={row} source={source} />
+        ))}
+      <NotTranslated locale={locale} rows={status.locales.filter((row) => row.state === 'missing')} total={status.locales[0]?.total ?? 0} />
       <HowItIsChecked source={source} />
     </Group>
   );
@@ -225,19 +277,16 @@ function TranslationStatus({context}: {context: ExtensionContext}) {
   const status = outcome?.kind === 'status' ? outcome.status : null;
 
   return (
-    <Frame
-      busy={busy}
-      error={error}
-      heading={status?.displayName}
-      onRetry={refresh}
-      subtitle={status ? subtitle(status) : undefined}
-    >
+    <Frame busy={busy} error={error} heading={status?.displayName} onRetry={refresh} subtitle={status ? subtitle(status) : undefined}>
+      <style>{STYLE}</style>
       {outcome?.kind === 'nothing' && (
         <Alert intent="information">
           <Text fontSize="sm">{outcome.reason}</Text>
         </Alert>
       )}
-      {status && <StatusBody busy={busy} locale={content.locale} onRefresh={refresh} status={status} />}
+      {status && (
+        <StatusBody busy={busy} locale={content.locale} onRefresh={refresh} status={status} />
+      )}
     </Frame>
   );
 }

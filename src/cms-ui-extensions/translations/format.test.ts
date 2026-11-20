@@ -1,28 +1,6 @@
 import {describe, expect, it} from 'vitest';
 
-import {languageLabel, languageName, shortDate} from './format';
-
-describe('languageName', () => {
-  it('names a language in the editor\'s own language', () => {
-    expect(languageName('nl', 'en')).toBe('Dutch');
-    expect(languageName('nl', 'nl')).toBe('Nederlands');
-  });
-
-  it('falls back to the code', () => {
-    expect(languageName('xx', 'en')).toBe('xx');
-    expect(languageName('', 'en')).toBe('');
-    expect(languageName('not a code!', 'en')).toBe('not a code!');
-    expect(languageName('de', 'not a locale!')).toBe('German');
-  });
-});
-
-describe('languageLabel', () => {
-  it('adds the code the CMS shows, inside any parentheses the name already has', () => {
-    expect(languageLabel('nl', 'en')).toBe('Dutch (nl)');
-    expect(languageLabel('ja-JP', 'en')).toBe('Japanese (Japan, ja-JP)');
-    expect(languageLabel('xx', 'en')).toBe('xx');
-  });
-});
+import {count, percent, shortDate} from './format';
 
 describe('shortDate', () => {
   const now = new Date('2026-11-11T12:00:00Z');
@@ -35,5 +13,19 @@ describe('shortDate', () => {
   it('is empty without a date', () => {
     expect(shortDate(null, 'en-GB', now)).toBe('');
     expect(shortDate('not a date', 'en-GB', now)).toBe('');
+  });
+});
+
+describe('count and percent', () => {
+  it('pluralizes', () => {
+    expect(count(1, 'field')).toBe('1 field');
+    expect(count(1200, 'page')).toBe('1,200 pages');
+  });
+
+  it('never rounds real progress down to 0%', () => {
+    expect(percent(1, 660)).toBe('<1%');
+    expect(percent(0, 660)).toBe('0%');
+    expect(percent(2, 110)).toBe('2%');
+    expect(percent(3, 0)).toBe('0%');
   });
 });
